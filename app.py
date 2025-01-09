@@ -1,12 +1,7 @@
 import streamlit as st
-from transformers import AutoTokenizer, AutoModelForTokenClassification
+import re
 from PyPDF2 import PdfReader
 from docx import Document
-import torch
-
-# Load InLegalBERT from Hugging Face
-tokenizer = AutoTokenizer.from_pretrained("law-ai/InLegalBERT")
-model = AutoModelForTokenClassification.from_pretrained("law-ai/InLegalBERT")
 
 # Function to extract text from PDF
 def extract_text_from_pdf(pdf_file):
@@ -24,40 +19,33 @@ def extract_text_from_docx(docx_file):
         text += para.text + '\n'
     return text
 
-# Function to extract legal clauses using InLegalBERT
-def extract_clauses_from_legalbert(text):
-    # Tokenize the input text
-    inputs = tokenizer(text, return_tensors="pt", truncation=True, padding=True, max_length=512)
+# Function to identify and extract clauses from the document text
+def extract_clauses(text):
+    # Regular expression pattern to match numbered or bulleted points
+    # This pattern will match:
+    # 1. Clause heading
+    # 2. Bullet point (• or -)
+    pattern = r'(\d+[\.)]|•|-)\s*([^\n]+)\.(.*?)(?=\n\d+[\.)]|•|-|\Z)'
 
-    # Get model outputs
-    with torch.no_grad():
-        outputs = model(**inputs)
-
-    # Extract tokens and labels
-    logits = outputs.logits
-    predictions = torch.argmax(logits, dim=-1).squeeze().cpu().numpy()
-
-    # Decode tokens and identify clause-related tokens (depends on the model's labeling scheme)
-    tokens = tokenizer.convert_ids_to_tokens(inputs['input_ids'].squeeze().cpu().numpy())
     clauses = []
 
-    # Iterate through tokens and consider clause-like tokens
-    current_clause = []
-    for token, prediction in zip(tokens, predictions):
-        if prediction != 0:  # Assuming '0' is the label for non-clause tokens
-            current_clause.append(token)
-        else:
-            if current_clause:
-                clauses.append(" ".join(current_clause))
-                current_clause = []
-    
-    if current_clause:  # Append any remaining clause
-        clauses.append(" ".join(current_clause))
+    # Find all matches using regex
+    matches = re.findall(pattern, text, flags=re.DOTALL)
+
+    # Iterate through the matches and organize them into a list of clauses
+    for match in matches:
+        number_or_bullet = match[0].strip()  # Number or bullet point
+        heading = match[1].strip()  # Clause heading (e.g., "Board Duties")
+        description = match[2].strip()  # Clause description
+
+        # Format the extracted clause
+        clause = f"{number_or_bullet} {heading}: {description}"
+        clauses.append(clause)
 
     return clauses
 
 # Streamlit UI
-st.title("Legal Clause Extractor with InLegalBERT")
+st.title("Legal Clause Extractor")
 
 # File uploader to upload either PDF or DOCX file
 uploaded_file = st.file_uploader("Upload a PDF or DOCX file", type=["pdf", "docx"])
@@ -71,9 +59,9 @@ if uploaded_file is not None:
         st.write("Extracting text from DOCX...")
         text = extract_text_from_docx(uploaded_file)
 
-    # Call InLegalBERT model to extract legal clauses
-    st.write("Extracting legal clauses using InLegalBERT...")
-    clauses = extract_clauses_from_legalbert(text)
+    # Call the function to extract clauses
+    st.write("Extracting clauses from the document...")
+    clauses = extract_clauses(text)
 
     # Display the extracted clauses
     if clauses:

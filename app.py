@@ -25,8 +25,9 @@ def extract_clauses(text):
     # This pattern will match:
     # 1. Clause heading
     # 2. Bullet point (• or -)
-    pattern = r'(\d+[\.)]|•|-)\s*([^\n]+)\.(.*?)(?=\n\d+[\.)]|•|-|\Z)'
-
+    # A clause ends when a new numbered/bulleted point starts.
+    pattern = r'(\d+[\.)]|•|-)\s*([^\n]+)\.(.*?)(?=\n(\d+[\.)]|•|-|\Z))'
+    
     clauses = []
 
     # Find all matches using regex
@@ -41,6 +42,13 @@ def extract_clauses(text):
         # Format the extracted clause
         clause = f"{number_or_bullet} {heading}: {description}"
         clauses.append(clause)
+
+    # Now handle cases where the last clause does not have a new clause after it
+    # Example: handle ending parts like "Governing Law"
+    if len(clauses) > 0:
+        last_clause = clauses[-1]
+        if last_clause.endswith('Governing Law'):
+            clauses[-1] = last_clause + " [Clause continued without a new clause]"
 
     return clauses
 
